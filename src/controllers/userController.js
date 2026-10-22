@@ -1,5 +1,5 @@
 import User from "../models/User.js";
-
+import bcrypt from "bcrypt";
 
 export const getAllUsers = async (req, res) => {
   console.log("getAllUsers function called");
@@ -19,20 +19,15 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-
-export const partialUpdate = async (req, res) => {
-  console.log("addressUpdate called");
-  console.log("req.params.id>>>", req.params.id);
-  console.log("req.body>>>", req.body);
-
+export const nameUpdate = async (req, res) => {
   try {
-    const { id } = req.body;
-    const user = await User.findOne({ id });
+    const { id } = req.params;
+    const user = await User.findOne({ userId: id });
     if (!user) {
       throw new Error("User not found");
     }
 
-    user.address = req.body.address;
+    user.name = req.body.name;
     await user.save();
 
     res.status(200).json({
@@ -47,49 +42,49 @@ export const partialUpdate = async (req, res) => {
   }
 };
 
-
 export const replaceUser = async (req, res) => {
-  console.log("addressUpdate called");
-  console.log("req.params.id>>>", req.params.id);
-  console.log("req.body>>>", req.body);
   try {
-    const { id } = req.body;
-    const user = await User.findOne({ id });
+    const { id } = req.params;
+    const user = await User.findOne({ userId: id });
     if (!user) {
       throw new Error("User not found");
     }
-const result= await User.updateOne({id},req.body)
-await user.save()
+    const { name, age, address, email, password } = req.body;
+    user.name = name;
+    user.age = age;
+    user.address = address;
+    user.email = email;
+    user.password = await bcrypt.hash(password, 10);
+    await user.save();
+
     res.status(200).json({
       status: "OK",
-      data: result
+      data: user,
     });
   } catch (error) {
-     res.status(400).json({
+    res.status(400).json({
       status: "ERROR",
       message: error.message,
     });
   }
 };
 
-
-export const deleteUser = async (req,res)=>{
-    try{
-    const {userId}= req.body
-    const user = await User.findOne({userId})
-    if(!user){
-        throw new Error ("user not found")
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findOne({ userId: id });
+    if (!user) {
+      throw new Error("user not found");
     }
-    const result = await User.deleteOne({userId})
+    const result = await User.deleteOne({ userId: id });
     res.status(200).json({
-        status:"ok",
-        data: result
-    })
-}
-catch(error){
+      status: "ok",
+      data: result,
+    });
+  } catch (error) {
     res.status(400).json({
-        status:"error",
-        message: error.message
-    })
-}
-}
+      status: "error",
+      message: error.message,
+    });
+  }
+};
