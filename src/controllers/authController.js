@@ -5,26 +5,66 @@ import jwt from "jsonwebtoken";
 
 export const adminLogin = async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (
-      username === process.env.ADMIN_USERNAME &&
-      password === process.env.ADMIN_PASSWORD
-    ) {
-      const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET, {
-        expiresIn: "1d",
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        status: "error",
+        message: "Email and password are required",
       });
-      return res.status(200).json({
-        status: "OK",
-        message: "adminLogin Success",
-        token,
-      });
-    } else {
-      throw new Error("Invalid username or password");
     }
+
+    const admin = await User.findOne({
+      email: email.trim().toLowerCase(),
+    });
+
+    if (!admin) {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid email or password",
+      });
+    }
+
+    // Allow only admins
+    if (admin.role !== "admin") {
+      return res.status(403).json({
+        status: "error",
+        message: "Only admins can log in here",
+      });
+    }
+
+    const isPasswordMatch = await bcrypt.compare(
+      password,
+      admin.password
+    );
+
+    if (!isPasswordMatch) {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid email or password",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: admin.userId,
+        email: admin.email,
+        role: admin.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    return res.status(200).json({
+      status: "OK",
+      message: "Admin login successful",
+      token,
+    });
+
   } catch (error) {
-    res.status(401).json({
-      status: "ERROR",
-      message: error.message,
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error",
     });
   }
 };
@@ -33,7 +73,7 @@ export const registerUser = async (req, res) => {
   console.log("registerUser function called");
   try {
     //request body
-    const { name, age, address, email, password } = req.body;
+    const { name, age, address, email, password, role } = req.body;
     // console.log(name,age,address,email,password);
 
     if (!name || !email || !password) {
@@ -53,6 +93,7 @@ export const registerUser = async (req, res) => {
       age,
       address,
       email,
+      role,
       password: hashedPassword,
     });
 
@@ -72,47 +113,61 @@ export const registerUser = async (req, res) => {
 };
 
 export const userLogin = async (req, res) => {
-  console.log("userLogin Function Called");
   try {
     const { email, password } = req.body;
-    // console.log(email,password);
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      throw new Error("User not found");
+    // 1. Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password are required"
+      });
     }
 
-    const isPasswordMatch = await bcrypt.compare(
-      req.body.password,
-      user.password,
-    );
-    console.log("isPasswordMatch>>", isPasswordMatch);
-    if (!isPasswordMatch) {
-      throw new Error("Invalid email or password");
-    }
-
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      },
-    );
-
-    res.status(200).json({
-      status: "OK",
-      message: "login successfully",
-      token,
+    // 2. Find user
+    const user = await User.findOne({
+      email: email.toLowerCase().trim()
     });
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid email or password"
+      });
+    }
+
+    // 3. Check password
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Invalid email or password"
+      });
+    }
+
+    // 4. Prevent admins from using user login
+    if (user.role !== "user") {
+      return res.status(403).json({
+        message: "Please use admin login"
+      });
+    }
+
+    // 5. Generate JWT
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    return res.status(200).json({
+      message: "User login successful",
+      token
+    });
+
   } catch (error) {
-    res.status(400).json({
-      status: "error",
-      message: error.message,
+    return res.status(500).json({
+      message: error.message
     });
   }
 };

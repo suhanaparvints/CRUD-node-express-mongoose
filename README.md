@@ -57,16 +57,16 @@ The server connects to MongoDB before listening. It uses the `PORT` value from `
 
 All request and response bodies use JSON unless noted otherwise. The examples use `http://localhost:4200`; replace it with your deployed API URL or configured port.
 
-| Method   | Path                 | Authentication      | Description                              |
-| -------- | -------------------- | ------------------- | ---------------------------------------- |
-| `GET`    | `/health`            | None                | Check that the server is running         |
-| `POST`   | `/api/auth/register` | None                | Register a user                          |
-| `POST`   | `/api/auth/login`    | None                | Log in as a registered user              |
-| `POST`   | `/api/admin/login`   | None                | Log in with configured admin credentials |
-| `GET`    | `/api/users`         | Admin token         | List users                               |
-| `PATCH`  | `/api/users/:id`     | User token | Update a user's name                     |
-| `PUT`    | `/api/users/:id`     | Admin token         | Replace a user's editable fields         |
-| `DELETE` | `/api/users/:id`     | Admin token         | Delete a user                            |
+| Method   | Path                 | Authentication | Description                              |
+| -------- | -------------------- | -------------- | ---------------------------------------- |
+| `GET`    | `/health`            | None           | Check that the server is running         |
+| `POST`   | `/api/auth/register` | None           | Register a user                          |
+| `POST`   | `/api/auth/login`    | None           | Log in as a registered user              |
+| `POST`   | `/api/admin/login`   | None           | Log in with configured admin credentials |
+| `GET`    | `/api/users`         | Admin token    | List users                               |
+| `PATCH`  | `/api/users/:id`     | User token     | Update a user's name                     |
+| `PUT`    | `/api/users/:id`     | Admin token    | Replace a user's editable fields         |
+| `DELETE` | `/api/users/:id`     | Admin token    | Delete a user                            |
 
 For protected endpoints, send the token returned by login in the `Authorization` header:
 
