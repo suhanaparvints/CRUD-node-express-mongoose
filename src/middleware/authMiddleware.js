@@ -1,16 +1,12 @@
 import jwt from "jsonwebtoken";
 
-export const verifyToken = async (req, res, next) => {
+export const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-
   if (!authHeader) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  const token = authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
 
+  const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
@@ -20,7 +16,7 @@ export const verifyToken = async (req, res, next) => {
   }
 };
 
-export const verifyAdmin = async (req, res, next) => {
+export const verifyAdmin = (req, res, next) => {
   verifyToken(req, res, () => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ message: "Access denied: Admin only" });
@@ -31,6 +27,7 @@ export const verifyAdmin = async (req, res, next) => {
 
 export const verifyUser = (req, res, next) => {
   verifyToken(req, res, () => {
-    next(); // any logged in user can access
+    // any logged in user can access
+    next();
   });
 };

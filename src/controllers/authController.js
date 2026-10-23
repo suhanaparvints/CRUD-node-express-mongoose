@@ -1,6 +1,7 @@
 import { v7 as uuidV7 } from "uuid";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
+
 import jwt from "jsonwebtoken";
 
 export const adminLogin = async (req, res) => {
@@ -16,7 +17,7 @@ export const adminLogin = async (req, res) => {
 
     const admin = await User.findOne({
       email: email.trim().toLowerCase(),
-    });
+    }).select("+password");
 
     if (!admin) {
       return res.status(401).json({
@@ -33,10 +34,7 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    const isPasswordMatch = await bcrypt.compare(
-      password,
-      admin.password
-    );
+    const isPasswordMatch = await bcrypt.compare(password, admin.password);
 
     if (!isPasswordMatch) {
       return res.status(401).json({
@@ -52,7 +50,7 @@ export const adminLogin = async (req, res) => {
         role: admin.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: "1d" },
     );
 
     return res.status(200).json({
@@ -60,8 +58,8 @@ export const adminLogin = async (req, res) => {
       message: "Admin login successful",
       token,
     });
-
   } catch (error) {
+    console.error("Admin login failed:", error);
     return res.status(500).json({
       status: "error",
       message: "Internal server error",
@@ -70,44 +68,36 @@ export const adminLogin = async (req, res) => {
 };
 
 export const registerUser = async (req, res) => {
-  console.log("registerUser function called");
   try {
-    //request body
     const { name, age, address, email, password, role } = req.body;
-    // console.log(name,age,address,email,password);
-
-    if (!name || !email || !password) {
-      throw new Error("name, email, and password field required");
-    }
-
-    //uuid
     const userId = uuidV7();
-
-    //password bcrypt
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    //date & time
     const user = await User.create({
       userId,
       name,
       age,
       address,
-      email,
-      role,
+      email: email.trim().toLowerCase(),
       password: hashedPassword,
+      role,
     });
 
-    res.status(200).json({
+    res.status(201).json({
       status: "OK",
-      message: "registerUser Success",
-      data: user,
+      message: "User registered successfully",
+      data: { userId: user.userId },
     });
-
-    //save structured data to database -db.js
   } catch (error) {
-    res.status(400).json({
-      status: "Error",
-      message: error.message,
+    if (error.code === 11000) {
+      return res.status(409).json({
+        status: "error",
+        message: "A user with this email already exists",
+      });
+    }
+    console.error("User registration failed:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to register user",
     });
   }
 };
@@ -116,58 +106,46 @@ export const userLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Validate input
     if (!email || !password) {
       return res.status(400).json({
-        message: "Email and password are required"
+        message: "Email and password are required",
       });
     }
 
-    // 2. Find user
     const user = await User.findOne({
-      email: email.toLowerCase().trim()
-    });
+      email: email.toLowerCase().trim(),
+    }).select("+password");
 
     if (!user) {
       return res.status(401).json({
-        message: "Invalid email or password"
+        message: "Invalid email or password",
       });
     }
 
-    // 3. Check password
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(401).json({
-        message: "Invalid email or password"
+        message: "Invalid email or password",
       });
     }
 
-    // 4. Prevent admins from using user login
     if (user.role !== "user") {
       return res.status(403).json({
-        message: "Please use admin login"
+        message: "Please use admin login",
       });
     }
 
-    // 5. Generate JWT
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    const token = jwt.sign({ id: user.userId, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     return res.status(200).json({
       message: "User login successful",
-      token
+      token,
     });
-
   } catch (error) {
+    console.error("User login failed:", error);
     return res.status(500).json({
-      message: error.message
+      message: "Internal server error",
     });
   }
 };

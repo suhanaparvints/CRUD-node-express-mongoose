@@ -1,20 +1,20 @@
-import User from "../models/User.js";
 import bcrypt from "bcrypt";
 
-export const getAllUsers = async (req, res) => {
-  console.log("getAllUsers function called");
+import User from "../models/User.js";
 
+export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find().select("-password");
 
     res.status(200).json({
       status: "OK",
       data: users,
     });
   } catch (error) {
-    res.status(400).json({
+    console.error("User listing failed:", error);
+    res.status(500).json({
       status: "error",
-      message: error.message,
+      message: "Unable to retrieve users",
     });
   }
 };
@@ -24,7 +24,10 @@ export const nameUpdate = async (req, res) => {
     const { id } = req.params;
     const user = await User.findOne({ userId: id });
     if (!user) {
-      throw new Error("User not found");
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
     }
 
     user.name = req.body.name;
@@ -35,9 +38,10 @@ export const nameUpdate = async (req, res) => {
       data: user,
     });
   } catch (error) {
-    res.status(400).json({
+    console.error("User name update failed:", error);
+    res.status(500).json({
       status: "ERROR",
-      message: error.message,
+      message: "Unable to update user",
     });
   }
 };
@@ -45,9 +49,12 @@ export const nameUpdate = async (req, res) => {
 export const replaceUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findOne({ userId: id });
+    const user = await User.findOne({ userId: id }).select("-password");
     if (!user) {
-      throw new Error("User not found");
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
     }
     const { name, age, address, email, password } = req.body;
     user.name = name;
@@ -62,9 +69,16 @@ export const replaceUser = async (req, res) => {
       data: user,
     });
   } catch (error) {
-    res.status(400).json({
+    if (error.code === 11000) {
+      return res.status(409).json({
+        status: "error",
+        message: "A user with this email already exists",
+      });
+    }
+    console.error("User replacement failed:", error);
+    res.status(500).json({
       status: "ERROR",
-      message: error.message,
+      message: "Unable to update user",
     });
   }
 };
@@ -72,19 +86,22 @@ export const replaceUser = async (req, res) => {
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findOne({ userId: id });
+    const user = await User.deleteOne({ userId: id });
     if (!user) {
-      throw new Error("user not found");
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
     }
-    const result = await User.deleteOne({ userId: id });
     res.status(200).json({
       status: "ok",
-      data: result,
+      message: "User deleted successfully",
     });
   } catch (error) {
-    res.status(400).json({
+    console.error("User deletion failed:", error);
+    res.status(500).json({
       status: "error",
-      message: error.message,
+      message: "Unable to delete user",
     });
   }
 };

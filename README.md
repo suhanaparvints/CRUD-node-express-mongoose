@@ -1,22 +1,21 @@
-# CRUD Node, Express, and MongoDB API
+# CRUD Node, Express, and Mongoose API
 
-A REST API for registering users and managing user records. It is built with Node.js, Express, and Mongoose, stores data in MongoDB, hashes passwords with bcrypt, and uses JSON Web Tokens (JWT) to protect routes.
+A REST API for registering and authenticating users, then managing their records in MongoDB. It uses Express, Mongoose, Joi request validation, bcrypt password hashing, and JSON Web Tokens (JWT) for protected endpoints.
 
 ## Features
 
-- User registration and login
-- Admin login using environment-configured credentials
+- Register users and authenticate as a user or admin
 - List, update, and delete user records
-- Password hashing with bcrypt
-- Request validation and UUID-based user IDs
+- Validate request bodies and user IDs
+- Hash passwords with bcrypt and omit them from API responses
+- Connect to MongoDB with Mongoose
 - Health-check endpoint
-- CORS and Helmet middleware
 
 ## Requirements
 
-- Node.js (LTS recommended)
+- Node.js compatible with Mongoose 9
 - npm
-- MongoDB (local or hosted)
+- MongoDB, locally or hosted
 
 ## Getting started
 
@@ -26,53 +25,50 @@ A REST API for registering users and managing user records. It is built with Nod
    npm install
    ```
 
-2. Copy `.env.example` to `.env` and set the values for your environment:
+2. Create a `.env` file in the project root. Use `.env.example` as a reference:
 
    ```env
    PORT=4200
    MONGODB_URI=mongodb://localhost:27017
-   DATABASE=CRUD1
+   DATABASE=crud
    JWT_SECRET=replace-with-a-long-random-secret
-   ADMIN_USERNAME=your_admin_username
-   ADMIN_PASSWORD=your_admin_password
    ```
 
-   `JWT_SECRET` is used to sign and verify authentication tokens. Use a long, unpredictable value. Keep `.env` private; it is excluded from Git.
+   `PORT` is optional and defaults to `3000`. `MONGODB_URI`, `DATABASE`, and `JWT_SECRET` must be set. Keep `.env` private; it is excluded from Git.
 
-3. Make sure MongoDB is running, then start the API:
+3. Start MongoDB, then start the API:
 
    ```bash
    npm run dev
    ```
 
-   Or start it without the development watcher:
+   For a regular start without Nodemon:
 
    ```bash
    npm start
    ```
 
-The server connects to MongoDB before listening. It uses the `PORT` value from `.env`, or `3000` if `PORT` is not set.
+The server connects to MongoDB before it begins listening. Unless configured otherwise, the API is available at `http://localhost:3000`.
 
 ## API
 
-All request and response bodies use JSON unless noted otherwise. The examples use `http://localhost:4200`; replace it with your deployed API URL or configured port.
+All endpoints accept and return JSON where a request or response body is used. The examples below use `http://localhost:4200`; replace this with your configured port or deployed API URL.
 
-| Method   | Path                 | Authentication | Description                              |
-| -------- | -------------------- | -------------- | ---------------------------------------- |
-| `GET`    | `/health`            | None           | Check that the server is running         |
-| `POST`   | `/api/auth/register` | None           | Register a user                          |
-| `POST`   | `/api/auth/login`    | None           | Log in as a registered user              |
-| `POST`   | `/api/admin/login`   | None           | Log in with configured admin credentials |
-| `GET`    | `/api/users`         | Admin token    | List users                               |
-| `PATCH`  | `/api/users/:id`     | User token     | Update a user's name                     |
-| `PUT`    | `/api/users/:id`     | Admin token    | Replace a user's editable fields         |
-| `DELETE` | `/api/users/:id`     | Admin token    | Delete a user                            |
+| Method   | Endpoint               | Authentication              | Description                                                           |
+| -------- | ---------------------- | --------------------------- | --------------------------------------------------------------------- |
+| `GET`    | `/health`              | None                        | Check that the server is running and see the connected database name. |
+| `POST`   | `/api/auth/register`   | None                        | Register a user.                                                      |
+| `POST`   | `/api/users/login`     | None                        | Log in as a user and receive a user JWT.                              |
+| `POST`   | `/api/admin/login`     | None                        | Log in as an admin and receive an admin JWT.                          |
+| `PATCH`  | `/api/users/:id`       | Any valid user or admin JWT | Update a user's name.                                                 |
+| `PUT`    | `/api/users/:id`       | Any valid user or admin JWT | Replace a user's name, age, address, email, and password.             |
+| `GET`    | `/api/admin/users`     | Admin JWT                   | List all users.                                                       |
+| `PUT`    | `/api/admin/users/:id` | Admin JWT                   | Replace a user's name, age, address, email, and password.             |
+| `DELETE` | `/api/admin/users/:id` | Admin JWT                   | Delete a user.                                                        |
 
-For protected endpoints, send the token returned by login in the `Authorization` header:
+For protected endpoints, include the JWT returned by the appropriate login endpoint in the `Authorization` request header.
 
-```http
-Authorization: Bearer <token>
-```
+The user login token expires after one hour; the admin login token expires after one day. A user ID (`:id`) is the UUID returned as `data.userId` when registering a user.
 
 ### Health check
 
@@ -80,12 +76,13 @@ Authorization: Bearer <token>
 GET /health
 ```
 
-Returns a successful status when the server is running:
+Example response:
 
 ```json
 {
   "status": "OK",
-  "message": "success health check"
+  "message": "success health check",
+  "database": "crud"
 }
 ```
 
@@ -106,16 +103,37 @@ Content-Type: application/json
 }
 ```
 
-`name`, `email`, and `password` are required. The name must contain 3–50 letters and spaces. The password must be at least 6 characters and include an uppercase letter, a lowercase letter, a number, and one of `@$!%*?&`. `age` (10–80) and `address` (at least 5 characters) are optional.
+`name`, `email`, and `password` are required. Names must be 3–50 letters and spaces. Passwords must be at least 6 characters and include an uppercase letter, a lowercase letter, a number, and one of `@$!%*?&`. `age` is optional (10–80), as is `address` (at least 5 characters). The optional `role` accepts `user` or `admin`; if omitted, it defaults to `user`.
 
-On success, the response includes the new user's UUID in `data.userId`. Use this value as `:id` in user-management endpoints.
+Successful registration returns `201 Created` and the new user ID:
 
-### Log in as a user
+```json
+{
+  "status": "OK",
+  "message": "User registered successfully",
+  "data": {
+    "userId": "019..."
+  }
+}
+```
+
+### Log in
+
+User login:
 
 ```http
-POST /api/auth/login
+POST /api/users/login
 Content-Type: application/json
 ```
+
+Admin login:
+
+```http
+POST /api/admin/login
+Content-Type: application/json
+```
+
+Both endpoints accept an email and password:
 
 ```json
 {
@@ -124,38 +142,12 @@ Content-Type: application/json
 }
 ```
 
-The successful response contains a JWT in `token`. User tokens expire after one day.
-
-### Log in as an admin
-
-```http
-POST /api/admin/login
-Content-Type: application/json
-```
-
-```json
-{
-  "username": "your_admin_username",
-  "password": "your_admin_password"
-}
-```
-
-The credentials must match `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env`. The response contains an admin JWT in `token`; admin tokens expire after one day. Use this token for the admin-only `GET /api/users`, `PUT`, and `DELETE` endpoints.
-
-### List users
-
-```http
-GET /api/users
-Authorization: Bearer <user-or-admin-token>
-```
-
-Only an admin token is accepted. A valid user token without the admin role receives `403 Forbidden`. The response contains the user records stored in the database.
+Admin login requires an account whose role is `admin`. Successful login returns a JWT in the `token` field. Do not share or expose this token.
 
 ### Update a user's name
 
 ```http
 PATCH /api/users/<userId>
-Authorization: Bearer <user-or-admin-token>
 Content-Type: application/json
 ```
 
@@ -165,13 +157,14 @@ Content-Type: application/json
 }
 ```
 
-The `name` field is required. Any valid user token is accepted; this route does not restrict updates to the authenticated user's own account.
+The name must contain 1–100 characters. Any valid user or admin token is accepted; this endpoint does not check that the authenticated account owns the target user ID.
 
 ### Replace a user's editable fields
 
+The user and admin `PUT` endpoints accept the same request body:
+
 ```http
 PUT /api/users/<userId>
-Authorization: Bearer <admin-token>
 Content-Type: application/json
 ```
 
@@ -185,20 +178,38 @@ Content-Type: application/json
 }
 ```
 
-All fields shown are required. `age` must be an integer from 1 to 150, `name` must be 1–100 characters, `address` must be 1–300 characters, and `password` must be 6–128 characters. The new password is hashed before it is saved.
+All five fields are required. `name` must contain 1–100 characters, `age` must be an integer from 1–150, `address` must contain 1–300 characters, and `password` must contain 6–128 characters. The new password is hashed before storage. The user endpoint requires a valid user or admin token; the admin endpoint requires an admin token.
+
+### List users
+
+```http
+GET /api/admin/users
+```
+
+Returns all user records in a `data` array. Passwords are not included in user responses.
 
 ### Delete a user
 
 ```http
-DELETE /api/users/<userId>
-Authorization: Bearer <admin-token>
+DELETE /api/admin/users/<userId>
 ```
 
-No request body is required.
+No request body is required. The endpoint returns `200 OK` when the deletion request completes.
 
-### Errors
+## Responses and errors
 
-Validation failures and unsuccessful operations return a JSON error response. Missing or invalid authentication returns `401` or `403`; invalid request data generally returns `400`.
+Responses use JSON. Common HTTP statuses include:
+
+| Status                      | Meaning                                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `200 OK`                    | Request succeeded, such as login or an update.                                                 |
+| `201 Created`               | User registered successfully.                                                                  |
+| `400 Bad Request`           | Required data is missing or validation failed. Validation responses include a `details` array. |
+| `401 Unauthorized`          | Credentials are invalid or the authorization header is missing.                                |
+| `403 Forbidden`             | The token is invalid or expired, or the account does not have the required role.               |
+| `404 Not Found`             | A requested user was not found on endpoints that check for a missing user.                     |
+| `409 Conflict`              | The email address is already registered.                                                       |
+| `500 Internal Server Error` | The server could not complete the request.                                                     |
 
 ## Project structure
 
@@ -226,9 +237,9 @@ src/
 
 ## Available scripts
 
-| Command                | Description                        |
-| ---------------------- | ---------------------------------- |
-| `npm start`            | Start the API with Node.js         |
-| `npm run dev`          | Start the API with Nodemon         |
-| `npm run format`       | Format project files with Prettier |
-| `npm run format:check` | Check formatting with Prettier     |
+| Command                | Description                         |
+| ---------------------- | ----------------------------------- |
+| `npm start`            | Start the API with Node.js.         |
+| `npm run dev`          | Start the API with Nodemon.         |
+| `npm run format`       | Format project files with Prettier. |
+| `npm run format:check` | Check formatting with Prettier.     |

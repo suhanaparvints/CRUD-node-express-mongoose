@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
     age: {
-      type: String,
+      type: Number,
     },
     address: {
       type: String,
@@ -19,10 +19,14 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
     },
     password: {
       type: String,
       required: true,
+      select: false,
     },
     role: {
       type: String,
@@ -30,7 +34,16 @@ const userSchema = new mongoose.Schema(
       default: "user",
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: {
+      transform(_document, result) {
+        delete result.password;
+        delete result.__v;
+        return result;
+      },
+    },
+  },
 );
 
 const User = mongoose.model("User", userSchema);

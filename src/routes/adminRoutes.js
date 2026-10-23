@@ -6,7 +6,6 @@ import { deleteUser, getAllUsers, replaceUser } from "../controllers/userControl
 import { validate } from "../middleware/validate.js";
 import { deleteUserSchema, replaceUserSchema } from "../validators/userValidators.js";
 
-
 const adminRoutes = express.Router({ mergeParams: true });
 
 adminRoutes.post("/login", adminLogin);
