@@ -9,7 +9,7 @@ const adminRoutes = express.Router({ mergeParams: true });
 
 adminRoutes.post("/login", adminLogin);
 adminRoutes.get("/users", verifyAdmin, getAllUsers);
-adminRoutes.put("/:id", verifyAdmin, validate(replaceUserSchema), replaceUser);
-adminRoutes.delete("/:id", verifyAdmin, validate(deleteUserSchema), deleteUser);
+adminRoutes.put("/users/:id", verifyAdmin, validate(replaceUserSchema), replaceUser);
+adminRoutes.delete("/users/:id", verifyAdmin, validate(deleteUserSchema), deleteUser);
 
 export default adminRoutes;
