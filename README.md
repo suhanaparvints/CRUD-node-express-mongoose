@@ -1,21 +1,23 @@
 # CRUD Node, Express, and MongoDB API
 
-A JSON REST API for registering and authenticating users and managing user records. It uses Node.js, Express, MongoDB, and Mongoose, with bcrypt password hashing and JWT-based authentication.
+A JSON REST API for registering and authenticating users and managing user
+records. It uses Node.js, Express, MongoDB, and Mongoose, with Joi request
+validation, bcrypt password hashing during registration, and JWT-based
+authentication.
 
 ## Features
 
 - User registration and login
-- Admin login
-- User record listing, updating, and deletion
-- Request validation with Joi
+- Admin login and user administration
+- JWT authentication with separate user and admin login routes
+- Joi validation for registration and user update requests
 - MongoDB persistence with Mongoose
 - CORS, Helmet, and Morgan middleware
-- Health-check endpoint
+- Database-aware health endpoint
 
 ## Requirements
 
-- Node.js with ES module support
-- npm
+- Node.js and npm
 - A MongoDB instance (local or hosted)
 
 ## Setup
@@ -26,16 +28,18 @@ A JSON REST API for registering and authenticating users and managing user recor
    npm install
    ```
 
-2. Create a `.env` file in the project root. You can use `.env.example` as a starting point:
+2. Create a `.env` file in the project root (next to `package.json`) and
+   configure MongoDB, the database name, and a long random `JWT_SECRET`.
+   Keep `.env` private; it is ignored by Git.
 
    ```dotenv
-   PORT=3000
-   MONGODB_URI=mongodb://localhost:27017
-   DATABASE=your_database_name
+   MONGODB_URI=mongodb://127.0.0.1:27017
+   DATABASE=crud_app
    JWT_SECRET=replace-with-a-long-random-secret
+   PORT=3000
+   CORS_ORIGIN=http://localhost:5173
+   NODE_ENV=development
    ```
-
-   `PORT` is optional; the server defaults to `3000`. `MONGODB_URI`, `DATABASE`, and `JWT_SECRET` should be set for your environment. Keep `.env` private and do not commit credentials or secrets.
 
 3. Start the server:
 
@@ -43,33 +47,43 @@ A JSON REST API for registering and authenticating users and managing user recor
    npm run dev
    ```
 
-   `npm run dev` starts the server with nodemon. For a regular start, use:
+   For a regular start, use `npm start`. The API is available at
+   `http://localhost:<PORT>` (default port `3000`).
 
-   ```bash
-   npm start
-   ```
+## Configuration
 
-The API is available at `http://localhost:<PORT>`.
+| Variable      | Required | Description                                                                                |
+| ------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `MONGODB_URI` | Yes      | MongoDB connection URI.                                                                    |
+| `DATABASE`    | Yes      | Database name passed to Mongoose.                                                          |
+| `JWT_SECRET`  | Yes      | Secret used to sign and verify JWTs.                                                       |
+| `PORT`        | No       | HTTP port; defaults to `3000`.                                                             |
+| `CORS_ORIGIN` | No       | Allowed CORS origin. If omitted, CORS allows all origins.                                  |
+| `NODE_ENV`    | No       | Uses combined Morgan logging when set to `production`; otherwise uses development logging. |
 
 ## API
 
-Request and response bodies use JSON. Protected endpoints expect a JWT in the `Authorization` header:
+Request and response bodies use JSON. Protected endpoints require the JWT
+returned by a login endpoint:
 
 ```http
-Authorization: Bearer YOUR_JWT_HERE
+Authorization: Bearer <token>
 ```
 
-| Method   | Path                 | Access        | Description                                      |
-| -------- | -------------------- | ------------- | ------------------------------------------------ |
-| `GET`    | `/health`            | Public        | Check server status and connected database name. |
-| `POST`   | `/api/auth/register` | Public        | Register a user.                                 |
-| `POST`   | `/api/users/login`   | Public        | Log in as a user and receive a JWT.              |
-| `POST`   | `/api/admin/login`   | Public        | Log in as an admin and receive a JWT.            |
-| `PATCH`  | `/api/users/:id`     | Authenticated | Update a user's name.                            |
-| `PUT`    | `/api/users/:id`     | Authenticated | Replace a user's editable record fields.         |
-| `GET`    | `/api/admin/users`   | Admin         | List users; password hashes are excluded.        |
-| `PUT`    | `/api/admin/:id`     | Admin         | Replace a user's editable record fields.         |
-| `DELETE` | `/api/admin/:id`     | Admin         | Delete a user.                                   |
+| Method   | Path                   | Access                    | Description                                                                    |
+| -------- | ---------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| `GET`    | `/health`              | Public                    | Return server status and the connected database name.                          |
+| `POST`   | `/api/auth/register`   | Public                    | Register a user. The request can currently choose `user` or `admin` role.      |
+| `POST`   | `/api/users/login`     | Public                    | Log in with an account whose role is `user`.                                   |
+| `POST`   | `/api/admin/login`     | Public                    | Log in with an account whose role is `admin`.                                  |
+| `PATCH`  | `/api/users/:id`       | Any authenticated account | Update the name on the specified user record. No ownership check is performed. |
+| `PUT`    | `/api/users/:id`       | Any authenticated account | Update the specified user record. No ownership check is performed.             |
+| `GET`    | `/api/admin/users`     | Admin                     | List users without the password field.                                         |
+| `PUT`    | `/api/admin/users/:id` | Admin                     | Update the specified user record.                                              |
+| `DELETE` | `/api/admin/users/:id` | Admin                     | Delete the specified user record.                                              |
+
+The `:id` parameter is the MongoDB document `_id` (a 24-character hexadecimal
+ObjectId), not the `userId` UUID.
 
 ### Health check
 
@@ -77,13 +91,14 @@ Authorization: Bearer YOUR_JWT_HERE
 GET /health
 ```
 
-Example response:
+The server connects to MongoDB before it starts listening. When the endpoint
+responds, it returns HTTP `200`:
 
 ```json
 {
   "status": "OK",
   "message": "The server is running",
-  "database": "your_database_name"
+  "database": "crud_app"
 }
 ```
 
@@ -105,25 +120,30 @@ Content-Type: application/json
 }
 ```
 
-`role` may be `user` or `admin`; if omitted, the model defaults it to `user`. The registration validator makes `age` and `address` optional, but the database model requires both, so include them. Passwords are hashed before storage.
+The model requires `name`, `age`, `email`, `address`, and `password`. The
+registration validator requires `name`, `email`, and `password`, while `age`
+and `address` are optional at validation time; include all five fields to
+avoid a database validation error. Registration passwords must include an
+uppercase letter, lowercase letter, number, special character from
+`@$!%*?&`, and be at least six characters long.
+
+The optional `role` currently accepts `user` or `admin` and defaults to
+`user`. The API does not currently have a seed command or restrict public
+registration from creating admins. Do not expose this registration behavior
+to untrusted clients until role assignment is restricted.
+
+Successful response:
+
+```json
+{
+  "status": "ok",
+  "message": "successfully registered"
+}
+```
 
 ### Log in
 
-User login:
-
-```http
-POST /api/users/login
-Content-Type: application/json
-```
-
-Admin login:
-
-```http
-POST /api/admin/login
-Content-Type: application/json
-```
-
-Both endpoints accept an email and password:
+Both login endpoints accept an email and password:
 
 ```json
 {
@@ -132,15 +152,19 @@ Both endpoints accept an email and password:
 }
 ```
 
-Successful login returns a JWT token. User tokens expire after one hour; admin tokens expire after one day.
+Use `/api/users/login` for role `user` and `/api/admin/login` for role
+`admin`. User tokens expire after one hour; admin tokens expire after one day.
+The user token's `id` claim contains the MongoDB `_id`; the admin token's `id`
+claim contains the `userId` UUID. Tokens are verified cryptographically by
+middleware; middleware does not check whether the account still exists.
 
 ### Update a user
 
 Update a name:
 
 ```http
-PATCH /api/users/<user-id>
-Authorization: Bearer YOUR_JWT_HERE
+PATCH /api/users/<mongo-document-id>
+Authorization: Bearer <token>
 Content-Type: application/json
 ```
 
@@ -150,22 +174,93 @@ Content-Type: application/json
 }
 ```
 
-`PUT /api/users/<user-id>` and `PUT /api/admin/<user-id>` replace the record and require `name`, `age`, `email`, `address`, and `password`.
+The patch body allows a name from 1 to 100 letters/spaces. Any authenticated
+token can currently target any document ID; the controller does not enforce
+account ownership.
 
-### Delete a user
+`PUT /api/users/<mongo-document-id>` and
+`PUT /api/admin/users/<mongo-document-id>` require all of these fields:
 
-```http
-DELETE /api/admin/<user-id>
-Authorization: Bearer YOUR_ADMIN_JWT_HERE
+```json
+{
+  "name": "Jane Smith",
+  "age": 30,
+  "email": "jane@example.com",
+  "address": "123 Main Street",
+  "password": "StrongPassword1!"
+}
 ```
 
-The `id` in user and admin record routes is the MongoDB document ID.
+The full-update validator requires a name, integer age from 10 to 150, email,
+address, and password. Note that the current update controller does not hash
+the supplied password; avoid sending password values to these endpoints.
 
-## Important implementation notes
+### Admin operations
 
-- The registration endpoint currently allows clients to submit `"role": "admin"`. Restrict admin account creation before exposing the API publicly.
-- Admin login issues a token with the role value `admin`, while admin authorization currently checks for `Admin`. Consequently, requests to admin-protected routes are rejected until those role values are aligned.
-- User update routes require a valid token but currently do not check that the token belongs to the user being updated.
+Admin endpoints require a valid token whose role claim is `admin`.
+
+```http
+GET /api/admin/users
+Authorization: Bearer <admin-token>
+```
+
+The list response contains a `data` array and excludes the password field:
+
+```json
+{
+  "status": "OK",
+  "data": [
+    {
+      "_id": "507f1f77bcf86cd799439011",
+      "userId": "0190...",
+      "name": "Jane Doe",
+      "age": 30,
+      "email": "jane@example.com",
+      "address": "123 Main Street",
+      "role": "user"
+    }
+  ]
+}
+```
+
+Delete a user with:
+
+```http
+DELETE /api/admin/users/<mongo-document-id>
+Authorization: Bearer <admin-token>
+```
+
+### Validation and errors
+
+Joi validation failures return HTTP `400` with a `details` array:
+
+```json
+{
+  "status": "ERROR",
+  "message": "Validation failed",
+  "details": ["\"name\" is required"]
+}
+```
+
+Authentication middleware returns `401` when the authorization header is
+missing and `403` for invalid or expired tokens. Login endpoints return
+`401` for invalid credentials and `403` for a role mismatch. Controller errors
+currently use route-specific responses and status codes; there is no
+centralized error handler. Invalid IDs or missing records may currently return
+`400` from the update/delete controllers rather than a consistent `404`.
+
+## User fields
+
+| Field                    | Notes                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `userId`                 | UUID v7 generated by registration; unique in MongoDB.                                         |
+| `name`                   | Required by the model.                                                                        |
+| `age`                    | Required by the model.                                                                        |
+| `email`                  | Required by the model; no unique constraint is configured.                                    |
+| `address`                | Required by the model.                                                                        |
+| `password`               | Required by the model; registration hashes it with bcrypt.                                    |
+| `role`                   | `admin`, `user`, or `guest`; defaults to `user`. Registration accepts only `admin` or `user`. |
+| `createdAt`, `updatedAt` | Added automatically by Mongoose timestamps.                                                   |
 
 ## Project structure
 
@@ -173,7 +268,7 @@ The `id` in user and admin record routes is the MongoDB document ID.
 src/
   config/       MongoDB connection
   controllers/  Authentication and user handlers
-  middleware/   Authentication and request validation
+  middleware/   JWT authentication and request validation
   models/       Mongoose user model
   routes/       Express API routes
   validators/   Joi request schemas
@@ -188,3 +283,19 @@ src/
 | `npm run dev`          | Start the API with nodemon.       |
 | `npm run format`       | Format the project with Prettier. |
 | `npm run format:check` | Check formatting with Prettier.   |
+
+## Important implementation notes
+
+- Public registration currently allows requesting the `admin` role. There is no
+  admin seed script in this project; restrict role assignment before deploying
+  with untrusted clients.
+- User update routes authenticate the caller but do not verify that the caller
+  owns the target record.
+- The full-update controller assigns the supplied password directly rather
+  than hashing it. Do not use it to change passwords.
+- The name-update and delete controllers return user documents without
+  excluding the password field. Registration hashes passwords, but those
+  responses can expose password hashes. The admin list endpoint is the only
+  user-returning handler that explicitly excludes the password field.
+- Email is not marked unique in the Mongoose schema, so duplicate email
+  addresses are not prevented by a database index.
